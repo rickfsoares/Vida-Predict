@@ -1,0 +1,9 @@
+# Ambiente virtual
+.venv/
+venv/
+*.pyc
+
+# Arquivos temporários
+__pycache__/
+*.dbf
+*.dbc
