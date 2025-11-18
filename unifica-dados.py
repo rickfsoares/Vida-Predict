@@ -18,34 +18,35 @@ lista_historico_filtrados = []
 
 print("--- INICIANDO UNIFICAÇÃO (COM RÓTULOS 0 E 1) ---")
 
-# --- 3. LAUDOS ---
-colunas_laudos_necessarias = ['AP_CNSPCN', 'AP_CIDPRI', 'AP_IDADE', 'AP_SEXO']
-padrao_ad = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'ADSP*.parquet')
+# --- 3. COLETANDO TUDO (RÓTULOS E FEATURES) A PARTIR DE AMSP ---
+colunas_necessarias_amsp = ['AP_CNSPCN', 'AP_PRIPAL', 'AP_NUIDADE', 'AP_SEXO', 'AM_PESO', 'AM_ALTURA']
+
+padrao_am = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'AMSP*.parquet') 
+arquivos_am = glob.glob(padrao_am)
+print(f"\nProcessando {len(arquivos_am)} arquivos de Medicamentos (AM) para Rótulos e Features...")
+
+for parquet_file in arquivos_am:
+    try:
+        # Lê todas as colunas necessárias de uma vez
+        df_chunk = pd.read_parquet(parquet_file, columns=colunas_necessarias_amsp)
+        
+        # 1. RÓTULOS (Para lista_laudos_rotulados)
+        df_rotulos = df_chunk[['AP_CNSPCN', 'AP_PRIPAL', 'AP_NUIDADE', 'AP_SEXO']].copy()
+        df_rotulos['TEM_DM1'] = df_rotulos['AP_PRIPAL'].str.startswith(CID_ALVO_DM1, na=False).astype(int)
+        lista_laudos_rotulados.append(df_rotulos)
+
+        # 2. FEATURES (Para lista_medicamentos)
+        df_features = df_chunk[['AP_CNSPCN', 'AM_PESO', 'AM_ALTURA']].copy()
+        lista_medicamentos.append(df_features)
+
+    except Exception as e:
+        print(f"  -> Erro ao processar {parquet_file}: {e}")
+
+# --- 4. LAUDOS (ADSP) ---
+padrao_ad = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'ADSP*.parquet') 
 arquivos_ad = glob.glob(padrao_ad)
-print(f"\nProcessando {len(arquivos_ad)} arquivos de Laudos (AD)...")
+print(f"\nIgnorando {len(arquivos_ad)} arquivos de Laudos (AD).")
 
-for parquet_file in arquivos_ad:
-    try:
-        df_chunk = pd.read_parquet(parquet_file, columns=colunas_laudos_necessarias)
-        df_chunk['TEM_DM1'] = df_chunk['AP_CIDPRI'].str.startswith(CID_ALVO_DM1, na=False).astype(int)
-        lista_laudos_rotulados.append(df_chunk)
-    except Exception as e:
-        print(f"  -> Erro ao processar {parquet_file}: {e}")
-
-
-# --- 4. MEDICAMENTOS ---
-colunas_medicamentos_necessarias = ['AM_CNSPCN', 'AM_PESO', 'AM_ALTURA'] 
-
-padrao_ar = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'AMSP*.parquet')
-arquivos_ar = glob.glob(padrao_ar)
-print(f"\nProcessando {len(arquivos_ar)} arquivos de Medicamentos (AM)...")
-
-for parquet_file in arquivos_ar:
-    try:
-        df_chunk = pd.read_parquet(parquet_file, columns=colunas_medicamentos_necessarias)
-        lista_medicamentos.append(df_chunk)
-    except Exception as e:
-        print(f"  -> Erro ao processar {parquet_file}: {e}")
 
 # --- 5. HISTÓRICO (BI) ---
 colunas_historico_necessarias = ['CNS_PAC', 'CIDPRI']
@@ -56,23 +57,21 @@ print(f"\nProcessando {len(arquivos_bi)} diretórios de BPA-I (BI)...")
 
 for parquet_directory in arquivos_bi:
     try:
-        print(f"  Processando {os.path.basename(parquet_directory)} em lotes (pode demorar)...")
+        # MODO SEGURO: Processa fragmentos/arquivos individualmente
+        print(f"  Processando {os.path.basename(parquet_directory)} em fragmentos (modo seguro)...")
         
-        # 1. Use 'ParquetDataset' para LER O DIRETÓRIO (Coleção de arquivos)
         dataset = pq.ParquetDataset(parquet_directory)
         
-        # 2. Itere sobre os fragments (arquivos individuais) do Dataset
+        # Iterar sobre os fragments (arquivos individuais) do Dataset
         for fragment in dataset.fragments:
             
-            # 3. Leia o fragmento diretamente para um DataFrame do Pandas
-            # Isso garante que apenas um arquivo Parquet (fragmento) seja lido por vez.
+            # Lendo cada fragmento de forma independente e convertendo para pandas
             df_chunk = fragment.to_table(columns=colunas_historico_necessarias).to_pandas()
             
-            # 4. Faça o filtro
+            # Filtro
             filtro_hist = df_chunk['CIDPRI'].str.strip().str.upper() == CID_HISTORICO_FAMILIAR
             df_filtrado = df_chunk[filtro_hist]
             
-            # 5. Adicione o resultado filtrado à lista
             if not df_filtrado.empty:
                 lista_historico_filtrados.append(df_filtrado[['CNS_PAC']]) 
                 
@@ -83,13 +82,17 @@ for parquet_directory in arquivos_bi:
 
 # --- 6. UNIFICAR E SALVAR ---
 print("\n--- Unificando e Salvando Arquivos ---")
-print(f"Len dos laudos_rotulados: {len(lista_laudos_rotulados)}")
+print(f"Chunks de Laudos (Rótulos): {len(lista_laudos_rotulados)}")
+print(f"Chunks de Features (Peso/Altura): {len(lista_medicamentos)}")
+print(f"Chunks de Histórico (Z833): {len(lista_historico_filtrados)}")
 
 # --- Laudos (Rotulados) ---
 if lista_laudos_rotulados:
     df_laudos = pd.concat(lista_laudos_rotulados, ignore_index=True)
-    df_laudos = df_laudos.rename(columns={'AP_CNSPCN': 'CNS', 'AP_CIDPRI': 'CID_DIAGNOSTICO',
-                                          'AP_IDADE': 'IDADE', 'AP_SEXO': 'SEXO'})
+    
+    df_laudos = df_laudos.rename(columns={'AP_CNSPCN': 'CNS', 'AP_PRIPAL': 'CID_DIAGNOSTICO',
+                                          'AP_NUIDADE': 'IDADE', 'AP_SEXO': 'SEXO'})
+                                          
     df_laudos = df_laudos.drop_duplicates(subset=['CNS'], keep='first')
     df_laudos.to_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'laudos_rotulados.parquet'))
     print(f"Laudos (Rotulados) salvos: {len(df_laudos)} pacientes únicos.")
@@ -102,12 +105,13 @@ else:
 if lista_medicamentos:
     df_medicamentos = pd.concat(lista_medicamentos, ignore_index=True)
 
-    # Forçar 'AM_PESO' e 'AM_ALTURA' a serem numéricos (limpa o lixo)
+    # Forçar 'AM_PESO' e 'AM_ALTURA' a serem numéricos.
     df_medicamentos['AM_PESO'] = pd.to_numeric(df_medicamentos['AM_PESO'], errors='coerce')
     df_medicamentos['AM_ALTURA'] = pd.to_numeric(df_medicamentos['AM_ALTURA'], errors='coerce')
 
-    df_medicamentos = df_medicamentos.rename(columns={'AM_CNSPCN': 'CNS', 'AM_PESO': 'PESO', 'AM_ALTURA': 'ALTURA'})
-
+    # Renomear AP_CNSPCN, AM_PESO, AM_ALTURA
+    df_medicamentos = df_medicamentos.rename(columns={'AP_CNSPCN': 'CNS', 'AM_PESO': 'PESO', 'AM_ALTURA': 'ALTURA'})
+    
     df_medicamentos = df_medicamentos.dropna(subset=['PESO', 'ALTURA'])
 
     df_medicamentos = df_medicamentos.groupby('CNS')[['PESO', 'ALTURA']].mean().reset_index()
