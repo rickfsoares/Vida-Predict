@@ -51,26 +51,39 @@ for parquet_file in arquivos_ar:
 colunas_historico_necessarias = ['CNS_PAC', 'CIDPRI']
 padrao_bi = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'BISP*.parquet')
 arquivos_bi = glob.glob(padrao_bi)
+
 print(f"\nProcessando {len(arquivos_bi)} diretórios de BPA-I (BI)...")
+
 for parquet_directory in arquivos_bi:
     try:
         print(f"  Processando {os.path.basename(parquet_directory)} em lotes (pode demorar)...")
+        
+        # 1. Use 'ParquetDataset' para LER O DIRETÓRIO (Coleção de arquivos)
         dataset = pq.ParquetDataset(parquet_directory)
-        table = dataset.read(columns=colunas_historico_necessarias)
-        print(f"  -> {os.path.basename(parquet_directory)} (Filtrando em lotes)...")
-        for batch in table.to_batches(batch_size=1_000_000):
-            df_chunk = batch.to_pandas()
+        
+        # 2. Itere sobre os fragments (arquivos individuais) do Dataset
+        for fragment in dataset.fragments:
+            
+            # 3. Leia o fragmento diretamente para um DataFrame do Pandas
+            # Isso garante que apenas um arquivo Parquet (fragmento) seja lido por vez.
+            df_chunk = fragment.to_table(columns=colunas_historico_necessarias).to_pandas()
+            
+            # 4. Faça o filtro
             filtro_hist = df_chunk['CIDPRI'].str.strip().str.upper() == CID_HISTORICO_FAMILIAR
             df_filtrado = df_chunk[filtro_hist]
+            
+            # 5. Adicione o resultado filtrado à lista
             if not df_filtrado.empty:
                 lista_historico_filtrados.append(df_filtrado[['CNS_PAC']]) 
+                
         print(f"  -> {os.path.basename(parquet_directory)} concluído.")
+
     except Exception as e:
         print(f"  -> Erro ao processar {parquet_directory}: {e}")
 
-
 # --- 6. UNIFICAR E SALVAR ---
 print("\n--- Unificando e Salvando Arquivos ---")
+print(f"Len dos laudos_rotulados: {len(lista_laudos_rotulados)}")
 
 # --- Laudos (Rotulados) ---
 if lista_laudos_rotulados:
