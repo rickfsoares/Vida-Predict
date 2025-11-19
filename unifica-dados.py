@@ -10,16 +10,17 @@ os.makedirs(PASTA_DADOS_UNIFICADOS, exist_ok=True)
 
 CID_ALVO_DM1 = 'E10' 
 CID_HISTORICO_FAMILIAR = 'Z833'
+ARQUIVO_FINAL_MODELO = os.path.join(PASTA_DADOS_UNIFICADOS, 'dataset_final_modelo.parquet')
 
 # --- 2. LISTAS PARA COLETAR OS "CHUNKS" ---
 lista_laudos_rotulados = []
 lista_medicamentos = []
 lista_historico_filtrados = []
 
-print("--- INICIANDO UNIFICAÇÃO (COM RÓTULOS 0 E 1) ---")
+print("--- INICIANDO UNIFICAÇÃO DE CHUNKS ---")
 
-# --- 3. COLETANDO TUDO (RÓTULOS E FEATURES) A PARTIR DE AMSP ---
-colunas_necessarias_amsp = ['AP_CNSPCN', 'AP_PRIPAL', 'AP_NUIDADE', 'AP_SEXO', 'AM_PESO', 'AM_ALTURA']
+# --- 3. COLETANDO TUDO (RÓTULOS, DEMOGRÁFICOS e FEATURES) A PARTIR DE AMSP ---
+colunas_necessarias_amsp = ['AP_CNSPCN', 'AP_CIDPRI', 'AP_NUIDADE', 'AP_SEXO', 'AP_RACACOR', 'AM_PESO', 'AM_ALTURA']
 
 padrao_am = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'AMSP*.parquet') 
 arquivos_am = glob.glob(padrao_am)
@@ -30,9 +31,9 @@ for parquet_file in arquivos_am:
         # Lê todas as colunas necessárias de uma vez
         df_chunk = pd.read_parquet(parquet_file, columns=colunas_necessarias_amsp)
         
-        # 1. RÓTULOS (Para lista_laudos_rotulados)
-        df_rotulos = df_chunk[['AP_CNSPCN', 'AP_PRIPAL', 'AP_NUIDADE', 'AP_SEXO']].copy()
-        df_rotulos['TEM_DM1'] = df_rotulos['AP_PRIPAL'].str.startswith(CID_ALVO_DM1, na=False).astype(int)
+        # 1. RÓTULOS & DEMOGRÁFICOS (Para lista_laudos_rotulados)
+        df_rotulos = df_chunk[['AP_CNSPCN', 'AP_CIDPRI', 'AP_NUIDADE', 'AP_SEXO', 'AP_RACACOR']].copy()
+        df_rotulos['TEM_DM1'] = df_rotulos['AP_CIDPRI'].str.startswith(CID_ALVO_DM1, na=False).astype(int)
         lista_laudos_rotulados.append(df_rotulos)
 
         # 2. FEATURES (Para lista_medicamentos)
@@ -48,7 +49,7 @@ arquivos_ad = glob.glob(padrao_ad)
 print(f"\nIgnorando {len(arquivos_ad)} arquivos de Laudos (AD).")
 
 
-# --- 5. HISTÓRICO (BI) ---
+# --- 5. HISTÓRICO (BI) - USANDO LEITURA FRAGMENTADA SEGURA ---
 colunas_historico_necessarias = ['CNS_PAC', 'CIDPRI']
 padrao_bi = os.path.join(PASTA_DADOS_BRUTOS_PARQUET, 'BISP*.parquet')
 arquivos_bi = glob.glob(padrao_bi)
@@ -57,18 +58,13 @@ print(f"\nProcessando {len(arquivos_bi)} diretórios de BPA-I (BI)...")
 
 for parquet_directory in arquivos_bi:
     try:
-        # MODO SEGURO: Processa fragmentos/arquivos individualmente
         print(f"  Processando {os.path.basename(parquet_directory)} em fragmentos (modo seguro)...")
         
         dataset = pq.ParquetDataset(parquet_directory)
         
-        # Iterar sobre os fragments (arquivos individuais) do Dataset
         for fragment in dataset.fragments:
-            
-            # Lendo cada fragmento de forma independente e convertendo para pandas
             df_chunk = fragment.to_table(columns=colunas_historico_necessarias).to_pandas()
             
-            # Filtro
             filtro_hist = df_chunk['CIDPRI'].str.strip().str.upper() == CID_HISTORICO_FAMILIAR
             df_filtrado = df_chunk[filtro_hist]
             
@@ -80,45 +76,36 @@ for parquet_directory in arquivos_bi:
     except Exception as e:
         print(f"  -> Erro ao processar {parquet_directory}: {e}")
 
-# --- 6. UNIFICAR E SALVAR ---
-print("\n--- Unificando e Salvando Arquivos ---")
-print(f"Chunks de Laudos (Rótulos): {len(lista_laudos_rotulados)}")
-print(f"Chunks de Features (Peso/Altura): {len(lista_medicamentos)}")
-print(f"Chunks de Histórico (Z833): {len(lista_historico_filtrados)}")
+
+# --- 6. UNIFICAR E SALVAR ARQUIVOS INTERMEDIÁRIOS ---
+print("\n--- Unificando e Salvando Arquivos Intermediários ---")
 
 # --- Laudos (Rotulados) ---
 if lista_laudos_rotulados:
     df_laudos = pd.concat(lista_laudos_rotulados, ignore_index=True)
-    
-    df_laudos = df_laudos.rename(columns={'AP_CNSPCN': 'CNS', 'AP_PRIPAL': 'CID_DIAGNOSTICO',
-                                          'AP_NUIDADE': 'IDADE', 'AP_SEXO': 'SEXO'})
+    df_laudos = df_laudos.rename(columns={'AP_CNSPCN': 'CNS', 'AP_CIDPRI': 'CID_DIAGNOSTICO',
+                                          'AP_NUIDADE': 'IDADE', 'AP_SEXO': 'SEXO', 'AP_RACACOR': 'RACA_COR'})
                                           
     df_laudos = df_laudos.drop_duplicates(subset=['CNS'], keep='first')
     df_laudos.to_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'laudos_rotulados.parquet'))
-    print(f"Laudos (Rotulados) salvos: {len(df_laudos)} pacientes únicos.")
-    print("Distribuição das classes no arquivo de Laudos:")
-    print(df_laudos['TEM_DM1'].value_counts(normalize=True))
+    print(f"1. Laudos (Rotulados) salvos: {len(df_laudos)} pacientes únicos.")
 else:
-    print("Nenhum Laudo encontrado.")
+    print("1. Nenhum Laudo encontrado.")
 
 # --- Medicamentos (Peso/Altura) ---
 if lista_medicamentos:
     df_medicamentos = pd.concat(lista_medicamentos, ignore_index=True)
-
-    # Forçar 'AM_PESO' e 'AM_ALTURA' a serem numéricos.
     df_medicamentos['AM_PESO'] = pd.to_numeric(df_medicamentos['AM_PESO'], errors='coerce')
     df_medicamentos['AM_ALTURA'] = pd.to_numeric(df_medicamentos['AM_ALTURA'], errors='coerce')
 
-    # Renomear AP_CNSPCN, AM_PESO, AM_ALTURA
     df_medicamentos = df_medicamentos.rename(columns={'AP_CNSPCN': 'CNS', 'AM_PESO': 'PESO', 'AM_ALTURA': 'ALTURA'})
-    
     df_medicamentos = df_medicamentos.dropna(subset=['PESO', 'ALTURA'])
 
     df_medicamentos = df_medicamentos.groupby('CNS')[['PESO', 'ALTURA']].mean().reset_index()
     df_medicamentos.to_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'medicamentos_features.parquet'))
-    print(f"Features (Peso/Altura) salvas: {len(df_medicamentos)} registros.")
+    print(f"2. Features (Peso/Altura) salvas: {len(df_medicamentos)} registros.")
 else:
-    print("Nenhum dado de Medicamentos (Peso/Altura) encontrado.")
+    print("2. Nenhum dado de Medicamentos (Peso/Altura) encontrado.")
 
 # --- Histórico (Z833) ---
 if lista_historico_filtrados:
@@ -127,8 +114,64 @@ if lista_historico_filtrados:
     df_historico['TEM_HISTORICO_DM'] = 1
     df_historico_final = df_historico[['CNS', 'TEM_HISTORICO_DM']].drop_duplicates(subset=['CNS'])
     df_historico_final.to_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'historico_familiar.parquet'))
-    print(f"Histórico Familiar salvo: {len(df_historico_final)} pacientes.")
+    print(f"3. Histórico Familiar salvo: {len(df_historico_final)} pacientes.")
 else:
-    print("Nenhum Histórico Familiar (Z833) encontrado.")
+    print("3. Nenhum Histórico Familiar (Z833) encontrado.")
 
-print("\n--- SCRIPT 1 (UNIFICAÇÃO) CONCLUÍDO ---")
+
+# --------------------------------------------------------------------------------
+# --- 7. JUNÇÃO FINAL DOS DATASETS ---
+# --------------------------------------------------------------------------------
+
+print("\n--- INICIANDO JUNÇÃO FINAL DOS 3 ARQUIVOS (.parquet) ---")
+
+try:
+    # Carregar os datasets intermediários
+    df_principal = pd.read_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'laudos_rotulados.parquet'))
+    df_features = pd.read_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'medicamentos_features.parquet'))
+    df_historico = pd.read_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'historico_familiar.parquet'))
+
+    # 7.1. Merge 1: Juntando Principal e Features Clínicas (Peso/Altura)
+    df_final = pd.merge(
+        df_principal, 
+        df_features, 
+        on='CNS', 
+        how='left'
+    )
+
+    # 7.2. Merge 2: Juntando Histórico Familiar
+    df_final = pd.merge(
+        df_final, 
+        df_historico, 
+        on='CNS', 
+        how='left'
+    )
+
+    # 7.3. Tratamento Inicial de Valores Faltantes
+    
+    # Histórico Familiar: NaN significa SEM HISTÓRICO (0)
+    df_final['TEM_HISTORICO_DM'] = df_final['TEM_HISTORICO_DM'].fillna(0).astype(int)
+    
+    # Raça/Cor: Imputa '99' (Sem Informação) para faltantes, mantendo o tipo string/object para o One-Hot Encoding futuro.
+    df_final['RACA_COR'] = df_final['RACA_COR'].fillna('99').astype(str)
+    
+    # Sexo: Imputa '9' (Não Informado) para faltantes, para consistência.
+    df_final['SEXO'] = df_final['SEXO'].fillna('9').astype(str) 
+
+    # 7.4. Salvar o Dataset Final
+    df_final.to_parquet(ARQUIVO_FINAL_MODELO)
+
+    print("\n--- DATASET FINAL DE MODELAGEM CRIADO ---")
+    print(f"Arquivo final salvo em: {ARQUIVO_FINAL_MODELO}")
+    print(f"Total de Pacientes no Dataset Final: {len(df_final)}")
+    
+    print("\nStatus de Valores Faltantes (NaN) nas features principais após Junção:")
+    # Verifica a porcentagem de NaNs para Peso, Altura e Raca/Cor
+    print(df_final[['PESO', 'ALTURA', 'RACA_COR']].isnull().sum() / len(df_final) * 100)
+
+except Exception as e:
+    print(f"\nERRO na fase de Junção Final: {e}")
+    print("Verifique se os arquivos intermediários foram criados corretamente na Seção 6.")
+
+
+print("\n--- SCRIPT 1 (UNIFICAÇÃO COMPLETA) CONCLUÍDO ---")
