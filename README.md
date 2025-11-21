@@ -38,4 +38,5 @@
     ```
 
 ---
-
+## Link Para Notebook
+[Link para o notebook](https://colab.research.google.com/drive/1CvLV5s-HWXrIGAKqGAnFVo0uACIY6aTy?usp=sharing)
