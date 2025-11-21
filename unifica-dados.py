@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import glob
 import pyarrow.parquet as pq
+import numpy as np
+
 
 # --- 1. DEFINIÇÕES ---
 PASTA_DADOS_BRUTOS_PARQUET = 'dados-datasus-processados'
@@ -162,19 +164,66 @@ try:
         on='CNS', 
         how='left'
     )
+    
+   # --- Criar IMC (PESO / ALTURA²) ---
+    df_final['IMC'] = df_final.apply(
+    lambda x: x['PESO'] / ((x['ALTURA'] / 100) ** 2)
+    if pd.notna(x['PESO']) and pd.notna(x['ALTURA']) and x['PESO'] > 0 and x['ALTURA'] > 0
+    else None,
+    axis=1
+)
+
 
     # 7.3. Tratamento Inicial de Valores Faltantes
     
     # Histórico Familiar: NaN significa SEM HISTÓRICO (0)
     df_final['TEM_HISTORICO_DM'] = df_final['TEM_HISTORICO_DM'].fillna(0).astype(int)
     
+
     # Raça/Cor: Imputa '99' (Sem Informação) para faltantes, mantendo o tipo string/object para o One-Hot Encoding futuro.
     df_final['RACA_COR'] = df_final['RACA_COR'].fillna('99').astype(str)
     
     # Sexo: Imputa '9' (Não Informado) para faltantes, para consistência.
     df_final['SEXO'] = df_final['SEXO'].fillna('9').astype(str) 
 
-    # 7.4. Salvar o Dataset Final
+
+    # 7.4. Tratamento Inicial de Valores Faltantes
+   
+    df_final = df_final[
+    (df_final['ALTURA'] > 100) &
+    (df_final['PESO'] > 20)
+    ]
+
+    #  Recalcular IMC com altura em metros
+
+    df_final['IMC'] = df_final.apply(
+    lambda x: x['PESO'] / ((x['ALTURA'] / 100) ** 2)
+    if x['ALTURA'] > 0 else np.nan,
+    axis=1
+    )
+
+    # Reclassifica IMC
+
+    def classifica_imc(imc):
+        if pd.isna(imc): return None
+        if imc < 18.5: return "Abaixo do peso"
+        if imc < 25: return "Normal"
+        if imc < 30: return "Sobrepeso"
+        return "Obesidade"
+
+    df_final['IMC_CLASS'] = df_final['IMC'].apply(classifica_imc)
+
+#  Remover IMCs fora da realidade
+
+    df_final = df_final[(df_final['IMC'] >= 10) & (df_final['IMC'] <= 60)]
+
+        #  Remover pacientes sem informações essenciais
+
+
+    df_final = df_final.dropna(subset=['IDADE', 'SEXO', 'CID_DIAGNOSTICO'])
+
+
+    # 7.5. Salvar o Dataset Final
     df_final.to_parquet(ARQUIVO_FINAL_MODELO)
 
     print("\n--- DATASET FINAL DE MODELAGEM CRIADO ---")
