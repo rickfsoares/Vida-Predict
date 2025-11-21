@@ -95,15 +95,31 @@ else:
 # --- Medicamentos (Peso/Altura) ---
 if lista_medicamentos:
     df_medicamentos = pd.concat(lista_medicamentos, ignore_index=True)
+
+    # convertendo
     df_medicamentos['AM_PESO'] = pd.to_numeric(df_medicamentos['AM_PESO'], errors='coerce')
     df_medicamentos['AM_ALTURA'] = pd.to_numeric(df_medicamentos['AM_ALTURA'], errors='coerce')
 
+    # renomear
     df_medicamentos = df_medicamentos.rename(columns={'AP_CNSPCN': 'CNS', 'AM_PESO': 'PESO', 'AM_ALTURA': 'ALTURA'})
+
+    # remover NaNs
     df_medicamentos = df_medicamentos.dropna(subset=['PESO', 'ALTURA'])
 
+    # 🔥 filtro ANTES da média
+    df_medicamentos = df_medicamentos[
+        (df_medicamentos['PESO'] > 0) &
+        (df_medicamentos['PESO'] <= 400) &
+        (df_medicamentos['ALTURA'] > 0) &
+        (df_medicamentos['ALTURA'] <= 250)
+    ]
+
+    # Agora sim: média por paciente
     df_medicamentos = df_medicamentos.groupby('CNS')[['PESO', 'ALTURA']].mean().reset_index()
+
+    # salvar
     df_medicamentos.to_parquet(os.path.join(PASTA_DADOS_UNIFICADOS, 'medicamentos_features.parquet'))
-    print(f"2. Features (Peso/Altura) salvas: {len(df_medicamentos)} registros.")
+
 else:
     print("2. Nenhum dado de Medicamentos (Peso/Altura) encontrado.")
 
@@ -136,7 +152,7 @@ try:
         df_principal, 
         df_features, 
         on='CNS', 
-        how='left'
+        how='inner'
     )
 
     # 7.2. Merge 2: Juntando Histórico Familiar
