@@ -1,18 +1,205 @@
-from pysus import SIA
 import pandas as pd
-
-sia = SIA().load()
-
-files = sia.get_files("PA", uf="SP", year=2022)
-
-sia.download(files, local_dir="./dados-datasus-processados/")
-
-#parquet = sia.download(files, local_dir="./dados-datasus-processados/")[0]
-
-#print(parquet.to_dataframe())
+import os
 
 
-#df = pd.read_parquet("./dados-datasus-processados/PASP0001.parquet/")
+# ----------------------------------------------------------------------
+# 1. CARREGAR DATASETS
+# ----------------------------------------------------------------------
 
-#df = pd.read_parquet("./dados-datasus-processados/PASP1801a.parquet/")
-#print(df.head())
+laudos_df = pd.read_parquet("./dados-unificados/laudos_rotulados.parquet")
+print("Laudos")
+print(laudos_df.info())
+print(laudos_df.describe())
+print(laudos_df.head())
+
+print()
+print("-=" * 10)
+
+historico = pd.read_parquet("./dados-unificados/historico_familiar.parquet")
+print("Historico")
+print(historico.info())
+print(historico.describe())
+print(historico.head())
+
+print()
+print("-=" * 10)
+
+medicamentos_df = pd.read_parquet("./dados-unificados/medicamentos_features.parquet")
+print("Medicamentos")
+print(medicamentos_df.info())
+print(medicamentos_df.describe())
+print(medicamentos_df.head())
+
+print()
+print("-=" * 10)
+
+df_final = pd.read_parquet("./dados-unificados/dataset_final_modelo.parquet")
+print("Final")
+print(df_final.info())
+print(df_final.describe())
+print(df_final.head().to_string())
+print(df_final["TEM_DM1"].unique())
+
+
+# ----------------------------------------------------------------------
+# 2. VERIFICADOR DE INCONSISTÊNCIAS (NOVO)
+# ----------------------------------------------------------------------
+print()
+print("="*60)
+print(" 🔎 INICIANDO VERIFICAÇÃO DO DATASET FINAL")
+print("="*60)
+
+df = df_final  # apenas para simplificar
+
+# -------------------------------
+# 1) Converter valores que deveriam ser numéricos
+# -------------------------------
+
+for col in ["PESO", "ALTURA", "IDADE"]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+# -------------------------------
+# 2) Verificação de duplicados
+# -------------------------------
+if "CNS" in df.columns:
+    duplicados = df["CNS"].duplicated().sum()
+    if duplicados == 0:
+        print("\n[OK] Nenhum CNS duplicado.")
+    else:
+        print(f"\n[ALERTA] Existem {duplicados} CNS duplicados!")
+else:
+    print("\n[INFO] Coluna CNS não encontrada.")
+
+# -------------------------------
+# 3) Verificação de NaNs
+# -------------------------------
+print("\n-- Verificação de NaNs --")
+for col in ["PESO", "ALTURA", "SEXO", "RACA_COR"]:
+    if col in df.columns:
+        faltando = df[col].isna().sum()
+        status = "[OK]" if faltando > 0 else "[OK]"
+        print(f"{status} {col} está faltando — {faltando} registros")
+    else:
+        print(f"[INFO] Coluna {col} não encontrada")
+
+# -------------------------------
+# 4) Valores absurdos gerais
+# -------------------------------
+print("\n-- Verificação de valores absurdos gerais --")
+
+if "PESO" in df.columns:
+    print(f"[PROBLEMA] Peso <= 0 — { (df['PESO'] <= 0).sum() } registros")
+    print(f"[PROBLEMA] Peso > 350 kg — { (df['PESO'] > 350).sum() } registros")
+else:
+    print("[INFO] Coluna PESO não encontrada.")
+
+if "ALTURA" in df.columns:
+    print(f"[PROBLEMA] Altura <= 0 — { (df['ALTURA'] <= 0).sum() } registros")
+    print(f"[PROBLEMA] Altura > 250 cm — { (df['ALTURA'] > 250).sum() } registros")
+else:
+    print("[INFO] Coluna ALTURA não encontrada.")
+
+# -------------------------------
+# 5) Verificações avançadas por faixa etária
+# -------------------------------
+print("\n-- Verificação avançada (por faixa etária) --")
+
+if "IDADE" in df.columns:
+
+    RN = df["IDADE"] <= 11
+    ADOLESCENTE = (df["IDADE"] >= 12) & (df["IDADE"] <= 17)
+    ADULTO = df["IDADE"] >= 18
+
+    # --- Faixa 1: Recém-nascidos / Crianças (0–11 anos) ---
+    if RN.sum() > 0:
+        print(f"\nCRIANÇAS / RN (0–11 anos): {RN.sum()} registros")
+
+        print(f"[PROBLEMA] Altura > 180 cm — { (df["ALTURA"][RN] > 180).sum() } registros")
+        print(f"[PROBLEMA] Peso > 120 kg — { (df["PESO"][RN] > 120).sum() } registros")
+
+    # --- Faixa 2: Adolescentes (12–17) ---
+    if ADOLESCENTE.sum() > 0:
+        print(f"\nADOLESCENTES (12–17 anos): {ADOLESCENTE.sum()} registros")
+
+        print(f"[PROBLEMA] Altura > 220 cm — { (df["ALTURA"][ADOLESCENTE] > 220).sum() } registros")
+        print(f"[PROBLEMA] Peso > 200 kg — { (df["PESO"][ADOLESCENTE] > 200).sum() } registros")
+
+    # --- Faixa 3: Adultos ---
+    if ADULTO.sum() > 0:
+        print(f"\nADULTOS (>=18 anos): {ADULTO.sum()} registros")
+
+        print(f"[PROBLEMA] Altura > 250 cm — { (df["ALTURA"][ADULTO] > 250).sum() } registros")
+        print(f"[PROBLEMA] Peso > 350 kg — { (df["PESO"][ADULTO] > 350).sum() } registros")
+
+else:
+    print("[INFO] Coluna IDADE não encontrada — não é possível fazer verificação por faixa etária.")
+
+
+
+print("\n" + "="*60)
+print(" ✅ VERIFICAÇÃO FINALIZADA")
+print("="*60)
+
+
+# ----------------------------------------------------------------------
+# 6. EXPORTAÇÃO EM CSV DOS DADOS INCONSISTENTES
+# ----------------------------------------------------------------------
+print("\nSalvando inconsistências em CSV...")
+
+# Criar pasta caso não exista
+output_dir = "./dados-unificados/relatorios"
+os.makedirs(output_dir, exist_ok=True)
+
+# -----------------------------------------------------
+# ABSURDOS GERAIS (LIMITADOS A 30)
+# -----------------------------------------------------
+absurdos_gerais = []
+
+# Peso <= 0
+absurdos_gerais.append(
+    df[df["PESO"] <= 0].head(30).assign(PROBLEMA="Peso <= 0")
+)
+
+# Peso > 350
+absurdos_gerais.append(
+    df[df["PESO"] > 400].head(30).assign(PROBLEMA="Peso > 400")
+)
+
+# Altura <= 0
+absurdos_gerais.append(
+    df[df["ALTURA"] <= 0].head(30).assign(PROBLEMA="Altura <= 0")
+)
+
+# Altura > 250
+absurdos_gerais.append(
+    df[df["ALTURA"] > 250].head(30).assign(PROBLEMA="Altura > 250")
+)
+
+df_absurdos_gerais = pd.concat(absurdos_gerais, ignore_index=True)
+
+df_absurdos_gerais.to_csv(f"{output_dir}/absurdos_gerais.csv", index=False)
+
+print("[OK] absurdos_gerais.csv salvo.")
+
+
+# -----------------------------------------------------
+# ABSURDOS POR FAIXA ETÁRIA (TODOS REGISTROS)
+# -----------------------------------------------------
+
+# CRIANÇAS / RN
+df_rn_abs = df[(df["IDADE"] <= 11) & ((df["ALTURA"] > 180) | (df["PESO"] > 120))]
+df_rn_abs.to_csv(f"{output_dir}/absurdos_criancas_rn.csv", index=False)
+print("[OK] absurdos_criancas_rn.csv salvo.")
+
+# ADOLESCENTES
+df_ado_abs = df[(df["IDADE"] >= 12) & (df["IDADE"] <= 17) &
+                ((df["ALTURA"] > 220) | (df["PESO"] > 200))]
+df_ado_abs.to_csv(f"{output_dir}/absurdos_adolescentes.csv", index=False)
+print("[OK] absurdos_adolescentes.csv salvo.")
+
+# ADULTOS
+df_adult_abs = df[(df["IDADE"] >= 18) &
+                  ((df["ALTURA"] > 250) | (df["PESO"] > 400))]
+df_adult_abs.to_csv(f"{output_dir}/absurdos_adultos.csv", index=False)
+print("[OK] absurdos_adultos.csv salvo.")
