@@ -225,6 +225,10 @@ try:
 
     # 7.5. Salvar o Dataset Final
     df_final.to_parquet(ARQUIVO_FINAL_MODELO)
+    df_final["ID"] = range(1, len(df_final)+1)
+    df_final = df_final.drop(columns=["CNS"])
+    df_final.to_parquet(...)
+
 
     print("\n--- DATASET FINAL DE MODELAGEM CRIADO ---")
     print(f"Arquivo final salvo em: {ARQUIVO_FINAL_MODELO}")
@@ -232,7 +236,9 @@ try:
     
     print("\nStatus de Valores Faltantes (NaN) nas features principais após Junção:")
     # Verifica a porcentagem de NaNs para Peso, Altura e Raca/Cor
-    print(df_final[['PESO', 'ALTURA', 'RACA_COR']].isnull().sum() / len(df_final) * 100)
+   print("\n--- PORCENTAGEM DE DADOS FALTANTES EM TODAS AS FEATURES ---")
+print((df_final.isnull().sum() / len(df_final) * 100).sort_values(ascending=False))
+
 
 except Exception as e:
     print(f"\nERRO na fase de Junção Final: {e}")
