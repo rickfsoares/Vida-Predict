@@ -33,16 +33,20 @@ Os dados foram extraídos do **DATASUS** (Departamento de Informática do SUS), 
 ```text
 Vida-Predict/
 │
-├── etl/                  # Módulo de Engenharia de Dados
-│   ├── extractor.py      # Leitura eficiente dos arquivos Parquet
-│   └── transformer.py    # Limpeza, Engenharia de Features e Regras de Negócio
+├── etl/                        # Módulo de Engenharia de Dados (Core)
+│   ├── extractor.py            # Leitura otimizada dos arquivos Parquet (AMSP/BISP)
+│   ├── transformer.py          # Limpeza, Cálculo de IMC e Engenharia de Features
+│   ├── validator.py            # Quality Assurance (QA): Gera relatórios de dados inconsistentes
+│   └── preprocessor.py         # Preparação para ML: One-Hot Encoding (Raça, Sexo, IMC)
 │
-├── dados-unificados/     # Datasets processados (Final: dataset_final_modelo.parquet)
-├── config.py             # Configurações globais e constantes
-├── pipeline.py           # Script orquestrador principal
-├── analise_exploratoria.py # Script para validação estatística e busca de outliers
-└── README.md             # Documentação do projeto
-```
+├── dados-unificados/           # Armazenamento dos datasets processados (.parquet)
+├── relatorios-consistencia/    # Relatórios CSV contendo outliers e erros detectados
+│
+├── config.py                   # Centralização de constantes e caminhos de arquivos
+├── pipeline.py                 # Orquestrador principal: Executa o fluxo completo (ETL -> QA -> OHE)
+├── run_experiments.py          # Validação Científica: Benchmarking de algoritmos de regressão
+├── download-dataset.py         # Script utilitário para download do DATASUS
+└── README.md                   # Documentação do projeto
 
 ---
 
