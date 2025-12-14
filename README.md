@@ -100,7 +100,7 @@ python pipeline.py
 
 * 📓 **Notebook de Análise Exploratória:** [Acessar Google Colab](https://colab.research.google.com/drive/1CvLV5s-HWXrIGAKqGAnFVo0uACIY6aTy?usp=sharing)
 
-* 📄 **Artigo Científico de Referência:** [Visualizar PDF no Repositório](https://github.com/rickfsoares/Vida-Predict/blob/main/16082-673-12792-1-10-20210707.pdf)
+* 📄 **Artigo Científico de Referência:** [Visualizar PDF](https://sol.sbc.org.br/index.php/sbcas/article/view/16082)
 
 ---
 
