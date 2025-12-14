@@ -28,23 +28,6 @@ Os dados foram extraídos do **DATASUS** (Departamento de Informática do SUS), 
 
 ---
 
-## ⚙️ Metodologia e Engenharia de Dados
-
-O projeto segue um pipeline rigoroso de ETL (Extract, Transform, Load) refatorado com princípios de **Clean Code** e **Orientação a Objetos**.
-
-### 1. Pipeline de Tratamento (`etl/`)
-* **Extração Segura:** Leitura otimizada de arquivos `.parquet` fragmentados para evitar estouro de memória (OOM).
-* **Limpeza de Outliers:** Remoção de dados biologicamente implausíveis (ex: IMC < 10 ou > 60).
-* **Imputação Lógica:** Tratamento de valores nulos em Histórico Familiar (assumindo 0 para ausência de registro) e Raça/Cor.
-
-### 2. Decisões Técnicas Importantes
-* **Engenharia de Feature (IMC):** O dataset original continha Peso e Altura isolados. Calculamos o **IMC (Índice de Massa Corporal)** como feature principal.
-* **Seleção de Features (Teste de Pearson):** Realizamos testes de correlação estatística e identificamos alta multicolinearidade (> 0.90) entre **Peso** e **IMC**.
-    * *Decisão:* Removemos a variável **Peso** e mantivemos o **IMC**, pois este possui maior relevância clínica e normaliza a relação peso/altura, melhorando a estabilidade do modelo preditivo.
-* **Privacidade:** Todos os dados utilizam o CNS (Cartão Nacional de Saúde) criptografado como chave primária, garantindo anonimato.
-
----
-
 ## 📂 Estrutura do Projeto
 
 ```text
@@ -76,7 +59,7 @@ Vida-Predict/
 Clone o repositório e instale as dependências:
 
 ```bash
-git clone [https://github.com/rickfsoares/Vida-Predict.git](https://github.com/rickfsoares/Vida-Predict.git)
+git clone https://github.com/rickfsoares/Vida-Predict.git
 cd Vida-Predict
 
 # Criar ambiente virtual
@@ -88,8 +71,7 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-3. Executando o pipeline de ETL
-
+3. Executando o pipeline
 ```bash
 python pipeline.py
 ```
@@ -111,4 +93,4 @@ python pipeline.py
 * **[Caio Bernardelli](https://github.com/CaioBernardelli)**
 * **[Flavio Nascimento](https://github.com/FlavioNascimento99)**
 
-Desenvolvido como parte da disciplina de Projeto Integrador - Ciência de Dados.
+Desenvolvido como parte da disciplina de Tópicos Especiais.
