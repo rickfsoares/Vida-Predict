@@ -85,6 +85,8 @@ python pipeline.py
 ## 🔗 Links Úteis
 
 * 📓 **Notebook de Análise Exploratória:** [Acessar Google Colab](https://colab.research.google.com/drive/1CvLV5s-HWXrIGAKqGAnFVo0uACIY6aTy?usp=sharing)
+  
+* 📓 **Notebook de Tratamento de Outliers, transformação de Dados e Problema de Regressao:** [Acessar Google Colab](https://colab.research.google.com/drive/17CEbw-rPDgaTvjh98l5hSrlEngcyuW0u#scrollTo=9q2at0x_rgdB)
 
 * 📄 **Artigo Científico de Referência:** [Visualizar PDF](https://sol.sbc.org.br/index.php/sbcas/article/view/16082)
 
