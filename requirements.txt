@@ -36,3 +36,4 @@ urllib3==1.26.20
 urwid==2.6.16
 wcwidth==0.2.14
 wget==3.2
+imbalanced-learn==0.14.1
