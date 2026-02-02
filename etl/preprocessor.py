@@ -14,6 +14,19 @@ class ModelPreprocessor:
         
         # --- CORREÇÃO: Garantir que SEXO é string ---
         df['SEXO'] = df['SEXO'].astype(str) 
+        
+       # Remover registros com sexo inválido (manter apenas M e F)
+        antes = len(df)
+        df = df[df['SEXO'].isin(['M', 'F'])].copy()
+        depois = len(df)
+        print(f"Removidos {antes - depois} registros com SEXO inválido")
+
+
+                #  1.1 REMOVER RAÇA NÃO INFORMADA (99)
+        antes = len(df)
+        df = df[df['RACA_COR'] != '99'].copy()
+        depois = len(df)
+        print(f"Removidos {antes - depois} registros com RACA_COR = 99")
 
         # 2. Definir colunas para encoding
         cols_to_encode = ['RACA_COR', 'SEXO']
