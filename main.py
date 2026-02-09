@@ -39,6 +39,18 @@ print(df_final.describe())
 print(df_final.head().to_string())
 print(df_final["TEM_DM1"].unique())
 
+print()
+print("=" * 60)
+print("📊 DISTRIBUIÇÃO ORIGINAL DO TARGET (LAUDOS)")
+print("=" * 60)
+
+if "TEM_DM1" in laudos_df.columns:
+    print(laudos_df["TEM_DM1"].value_counts())
+    print("\nProporção:")
+    print(laudos_df["TEM_DM1"].value_counts(normalize=True))
+else:
+    print("[ERRO] TEM_DM1 não encontrado em laudos_rotulados.parquet")
+
 
 # ----------------------------------------------------------------------
 # 2. VERIFICADOR DE INCONSISTÊNCIAS
@@ -184,34 +196,62 @@ df_adult_abs = df[(df["IDADE"] >= 18) &
                   ((df["ALTURA"] > 250) | (df["PESO"] > 400))]
 df_adult_abs.to_csv(f"{output_dir}/absurdos_adultos.csv", index=False)
 print("[OK] absurdos_adultos.csv salvo.")
-# ----------------------------------------------------------------------
-# 7. VISUALIZAÇÃO DO DATASET COM ONE-HOT ENCODING
-# ----------------------------------------------------------------------
 
 print()
-print("="*60)
-print(" 📊 VISUALIZAÇÃO — DATASET COM ONE-HOT ENCODING")
-print("="*60)
+print("=" * 60)
+print("📊 DISTRIBUIÇÃO FINAL DO TARGET (DATASET FINAL)")
+print("=" * 60)
 
-ohe_path = "./dados-unificados/dataset_modelagem_ohe.parquet"
-
-if os.path.exists(ohe_path):
-    df_ohe = pd.read_parquet(ohe_path)
-
-    print("\n[OK] Dataset OHE carregado com sucesso")
-    print("Shape:", df_ohe.shape)
-
-    print("\n--- Info ---")
-    print(df_ohe.info())
-
-    print("\n--- Primeiras 5 linhas ---")
-    print(df_ohe.head().to_string())
-
-    print("\n--- Colunas One-Hot (Raça) ---")
-    print([c for c in df_ohe.columns if "RACA_COR" in c])
-
-    print("\n--- Colunas One-Hot (IMC_CLASS) ---")
-    print([c for c in df_ohe.columns if "IMC_CLASS" in c])
-
+if "TEM_DM1" in df_final.columns:
+    print(df_final["TEM_DM1"].value_counts())
+    print("\nProporção:")
+    print(df_final["TEM_DM1"].value_counts(normalize=True))
 else:
-    print("[INFO] Dataset OHE ainda não foi gerado.")
+    print("[ERRO] TEM_DM1 não encontrado no dataset final")
+
+# ----------------------------------------------------------------------
+# 7. SALVAR DATASET FINAL CORRETO
+# ----------------------------------------------------------------------
+print("\n💾 Salvando dataset final para modelagem...")
+
+final_path = "./dados-unificados/dataset_final_modelo.parquet"
+df_final.to_parquet(final_path, index=False)
+
+print(f"✅ Dataset final salvo com sucesso em: {final_path}")
+print("Shape final:", df_final.shape)
+
+# ----------------------------------------------------------------------
+# 8. ONE-HOT ENCODING PARA MODELAGEM
+# ----------------------------------------------------------------------
+print("\n🧬 Gerando dataset para modelagem (One-Hot Encoding)")
+
+categoricas = ["SEXO", "RACA_COR", "IMC_CLASS"]
+
+df_ohe = pd.get_dummies(
+    df_final,
+    columns=[c for c in categoricas if c in df_final.columns],
+    drop_first=True
+)
+
+# -------------------------------
+# Validações finais
+# -------------------------------
+if df_ohe.empty:
+    raise ValueError("❌ Dataset OHE vazio")
+
+if "TEM_DM1" not in df_ohe.columns:
+    raise ValueError("❌ Coluna TEM_DM1 não encontrada após OHE")
+
+if df_ohe["TEM_DM1"].nunique() < 2:
+    raise ValueError("❌ Target inválido após OHE (apenas uma classe)")
+
+# -------------------------------
+# Salvando dataset OHE
+# -------------------------------
+ohe_path = "./dados-unificados/dataset_modelagem_ohe.parquet"
+df_ohe.to_parquet(ohe_path, index=False)
+
+print(f"✅ Dataset OHE salvo com sucesso em: {ohe_path}")
+print("Shape OHE:", df_ohe.shape)
+
+print("\n🚀 PIPELINE FINALIZADO COM SUCESSO")
